@@ -2,7 +2,7 @@ use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct SessionMetadata {
@@ -94,21 +94,24 @@ pub fn apply_subagent_descriptor_fallback(
     let Ok(entries) = fs::read_dir(root.join("brain")) else {
         return;
     };
-    for entry in entries.flatten() {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if !file_type.is_dir() {
-            continue;
-        }
-        let Some(parent_id) = entry.file_name().to_str().map(str::to_owned) else {
-            continue;
-        };
-        if parent_id == session_id || !is_valid_session_id(&parent_id) {
-            continue;
-        }
-        let descriptor_path = entry
-            .path()
+    let mut parents: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_dir() {
+                return None;
+            }
+            let parent_id = entry.file_name().to_str()?.to_owned();
+            if parent_id == session_id || !is_valid_session_id(&parent_id) {
+                return None;
+            }
+            Some((parent_id, entry.path()))
+        })
+        .collect();
+    parents.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (parent_id, parent_dir) in parents {
+        let descriptor_path = parent_dir
             .join(".system_generated/subagents")
             .join(format!("{session_id}.json"));
         if descriptor_path.is_file()
@@ -117,6 +120,59 @@ pub fn apply_subagent_descriptor_fallback(
             break;
         }
     }
+}
+
+/// Indexes `brain/<parent_id>/.system_generated/subagents/<child_id>.json` files
+/// across the Antigravity root so `sync_antigravity_usage_logs_with_cancel` can
+/// include fallback descriptor revisions in its synchronization fingerprint.
+pub(crate) fn index_subagent_descriptor_paths(root: &Path) -> HashMap<String, PathBuf> {
+    let mut index = HashMap::new();
+    let Ok(entries) = fs::read_dir(root.join("brain")) else {
+        return index;
+    };
+    let mut parents: Vec<(String, PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let file_type = entry.file_type().ok()?;
+            if !file_type.is_dir() {
+                return None;
+            }
+            let parent_id = entry.file_name().to_str()?.to_owned();
+            if !is_valid_session_id(&parent_id) {
+                return None;
+            }
+            Some((parent_id, entry.path()))
+        })
+        .collect();
+    parents.sort_by(|a, b| a.0.cmp(&b.0));
+
+    for (parent_id, parent_dir) in parents {
+        let subagents_dir = parent_dir.join(".system_generated/subagents");
+        let Ok(subagents) = fs::read_dir(&subagents_dir) else {
+            continue;
+        };
+        let mut children: Vec<PathBuf> = subagents
+            .flatten()
+            .filter_map(|entry| {
+                let file_type = entry.file_type().ok()?;
+                file_type.is_file().then(|| entry.path())
+            })
+            .collect();
+        children.sort();
+        for descriptor_path in children {
+            if descriptor_path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(child_id) = descriptor_path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if child_id == parent_id || !is_valid_session_id(child_id) {
+                continue;
+            }
+            index.entry(child_id.to_owned()).or_insert(descriptor_path);
+        }
+    }
+    index
 }
 
 fn read_subagent_descriptor_file(
@@ -753,16 +809,13 @@ mod tests {
 
         let mut blob = field(5, b"parent-session-uuid");
         blob.extend(field(6, b"root-session-uuid"));
-        blob.extend(field(7, b"file:///Users/will/projects/TokenUsageInsights"));
+        blob.extend(field(7, b"file:///example/project"));
         blob.extend(field(8, &subagent_spec));
         conn.execute("INSERT INTO trajectory_metadata_blob VALUES (?1)", [&blob])
             .unwrap();
 
         let metadata = read_trajectory_metadata(&conn, "child-session-uuid").unwrap();
-        assert_eq!(
-            metadata.cwd.as_deref(),
-            Some("/Users/will/projects/TokenUsageInsights")
-        );
+        assert_eq!(metadata.cwd.as_deref(), Some("/example/project"));
         assert_eq!(
             metadata.parent_session_id.as_deref(),
             Some("parent-session-uuid")
@@ -807,7 +860,7 @@ mod tests {
               },
               "state": "SUBAGENT_STATE_ALIVE",
               "spawnStepIndex": 12,
-              "workspaceUris": ["file:///Users/will/projects/Demo"]
+              "workspaceUris": ["file:///example/demo"]
             }"#,
         )
         .unwrap();
@@ -818,6 +871,6 @@ mod tests {
         assert_eq!(metadata.parent_session_id.as_deref(), Some("parent-uuid"));
         assert_eq!(metadata.agent_type.as_deref(), Some("self"));
         assert_eq!(metadata.agent_role.as_deref(), Some("Audio Builder Agent"));
-        assert_eq!(metadata.cwd.as_deref(), Some("/Users/will/projects/Demo"));
+        assert_eq!(metadata.cwd.as_deref(), Some("/example/demo"));
     }
 }

@@ -3338,7 +3338,7 @@ mod antigravity_tests {
         let step0 = serde_json::json!({
             "type": "SYSTEM_MESSAGE",
             "created_at": "2026-04-20T09:00:00Z",
-            "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the USER, Note that the user cannot see this message, so you should incorporate any relevant information into your response as needed.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:00Z sender=85f2109b-84aa-4779-a86c-59fc85eeeee8 priority=IMMEDIATE content=Audit the Antigravity subagent hierarchy.\n</SYSTEM_MESSAGE>"
+            "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the USER, Note that the user cannot see this message, so you should incorporate any relevant information into your response as needed.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:00Z sender=11111111-1111-4111-8111-111111111111 priority=IMMEDIATE content=Audit the Antigravity subagent hierarchy.\n</SYSTEM_MESSAGE>"
         });
         let step1 = serde_json::json!({
             "type": "PLANNER_RESPONSE",
@@ -3352,12 +3352,12 @@ mod antigravity_tests {
         let step2 = serde_json::json!({
             "type": "SYSTEM_MESSAGE",
             "created_at": "2026-04-20T09:00:05Z",
-            "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the USER.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:05Z sender=8f8241d6-87d0-429a-85af-89303676551b/task-1 priority=DEFERRED content=Background task Cargo test finished with exit code 0\n</SYSTEM_MESSAGE>"
+            "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the USER.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:05Z sender=22222222-2222-4222-8222-222222222222/task-1 priority=DEFERRED content=Background task Cargo test finished with exit code 0\n</SYSTEM_MESSAGE>"
         });
         let step3 = serde_json::json!({
             "type": "SYSTEM_MESSAGE",
             "created_at": "2026-04-20T09:00:08Z",
-            "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the USER.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:08Z sender=system priority=NORMAL content=Subagent \"Antigravity Subagent Researcher\" (8f8241d6-87d0-429a-85af-89303676551b) terminated without sending a message (status: CASCADE_RUN_STATUS_IDLE). Follow up with `send_message` if you still need a response.\n</SYSTEM_MESSAGE>"
+            "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the USER.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-04-20T09:00:08Z sender=system priority=NORMAL content=Subagent \"Antigravity Subagent Researcher\" (22222222-2222-4222-8222-222222222222) terminated without sending a message (status: CASCADE_RUN_STATUS_IDLE). Follow up with `send_message` if you still need a response.\n</SYSTEM_MESSAGE>"
         });
         let transcript = format!("{step0}\n{step1}\n{step2}\n{step3}\n");
         let entries = HashMap::from([(1, (stats(42), "gemini-3.1-pro-high".to_string()))]);

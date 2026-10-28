@@ -29,7 +29,7 @@
 
 ## 一、Antigravity 第一手資料結構（Primary Sources）
 
-本節依據 `~/.gemini/antigravity-cli/` 下的實機資料與 Antigravity CLI 二進位檔（`/Users/will/.local/bin/agy`）內嵌之 Protobuf Descriptor 進行交叉驗證（所有敏感提示詞內容均已去識別化）。
+本節依據 `~/.gemini/antigravity-cli/` 下的實機資料與 Antigravity CLI 二進位檔（`~/.local/bin/agy`）內嵌之 Protobuf Descriptor 進行交叉驗證（所有敏感提示詞、本機路徑與識別碼均已去識別化）。
 
 ### 1. 目錄與檔案拓撲
 
@@ -68,7 +68,7 @@
 
 TokenUsageInsights 目前已於 [`src/antigravity_metadata.rs`](../../src/antigravity_metadata.rs#L12-L79) 開啟 `conversations/<session_id>.db` 並解析 `trajectory_metadata_blob` 資料表的 Protobuf wire format（目前僅讀取 `field 7 = workspace_uris` 與 `field 1 = workspaces`）。
 
-經解析 `/Users/will/.local/bin/agy` 內嵌的 `exa.cortex_pb.CortexTrajectoryMetadata` 與 `exa.cortex_pb.SubagentSpec` Protobuf `DescriptorProto`，完整欄位定義如下：
+經解析 `~/.local/bin/agy` 內嵌的 `exa.cortex_pb.CortexTrajectoryMetadata` 與 `exa.cortex_pb.SubagentSpec` Protobuf `DescriptorProto`，完整欄位定義如下：
 
 ```protobuf
 // Message: .exa.cortex_pb.CortexTrajectoryMetadata (table: trajectory_metadata_blob.data)
@@ -79,7 +79,7 @@ message CortexTrajectoryMetadata {
   AgentScriptItem agent_script = 4;
   string parent_conversation_id = 5;       // 直接父會話 UUID（頂層會話無此欄位）
   string root_conversation_id = 6;         // 根會話 UUID（頂層會話等於自身 UUID）
-  repeated string workspace_uris = 7;      // 工作區 URI（如 file:///Users/...）
+  repeated string workspace_uris = 7;      // 工作區 URI（如 file:///example/...）
   SubagentSpec subagent_spec = 8;          // 子代理規格（僅 Subagent 會話具備）
   CustomAgentSpec static_config = 10;      // 代理型別靜態設定（field 1 = type_name）
   ExecutableScriptSpec executable_spec = 11;
@@ -126,7 +126,7 @@ message SubagentSpec {
 
 ```json
 {
-  "conversationId": "8f8241d6-87d0-429a-85af-89303676551b",
+  "conversationId": "22222222-2222-4222-8222-222222222222",
   "subagentDescriptor": {
     "typeName": "self",
     "role": "Antigravity Subagent Researcher"
@@ -134,7 +134,7 @@ message SubagentSpec {
   "state": "SUBAGENT_STATE_ALIVE",
   "spawnStepIndex": 13,
   "workspaceUris": [
-    "file:///Users/will/projects/TokenUsageInsights"
+    "file:///example/project"
   ]
 }
 ```
@@ -144,7 +144,7 @@ message SubagentSpec {
 - 頂層鍵集合固定為：`["conversationId", "spawnStepIndex", "state", "subagentDescriptor", "workspaceUris"]`（舊版少數無 `workspaceUris`）。
 - `state` 枚舉值：`SUBAGENT_STATE_ALIVE`、`SUBAGENT_STATE_KILLED`。
 - `subagentDescriptor` 鍵集合：`typeName`（如 `"self"`、`"research"`、`"image-generator"`、`"teamwork_preview"`、`"teamwork_preview_orchestrator"`、`"teamwork_preview_worker"`、`"teamwork_preview_reviewer"`、`"teamwork_preview_challenger"`、`"teamwork_preview_explorer"`、`"teamwork_preview_spec_miner"`、`"teamwork_preview_test_writer"`、`"teamwork_preview_auditor"`、`"teamwork_preview_victory_auditor"`）與 `role`（人類可讀的職務名稱，如 `"Audio Builder Agent"`、`"Independent Review Agent"`）。
-- 特例：本機有 1 筆被使用者立即取消的子代理（`5855acbe-3afd-42b5-a965-cc0e3be4f76a`），其 `subagentDescriptor` 為空物件 `{}`。
+- 特例：本機有 1 筆被使用者立即取消的子代理（`44444444-4444-4444-8444-444444444444`），其 `subagentDescriptor` 為空物件 `{}`。
 - 與來源 A（SQLite `CortexTrajectoryMetadata`）比對：在所有 206 個同時擁有 `.db` 與父目錄 `subagents/<child_id>.json` 的子會話中，`(parent_id, typeName, role)` **206/206 完全一致（0 筆不符）**。此外，對於測試環境（僅構造 `brain/` 目錄而未構造 `conversations/*.db`）或 `.db` 尚未落盤的情境，此檔案可提供免 SQLite 的純檔案階層解析。
 
 ### 4. 來源 C：`brain/<session_id>/.system_generated/messages/<message_uuid>.json`
@@ -153,9 +153,9 @@ message SubagentSpec {
 
 ```json
 {
-  "id": "b8d3577a-cb0c-4860-a745-c86e313865dc",
-  "recipient": "8f8241d6-87d0-429a-85af-89303676551b",
-  "sender": "85f2109b-84aa-4779-a86c-59fc85eeeee8",
+  "id": "55555555-5555-4555-8555-555555555555",
+  "recipient": "22222222-2222-4222-8222-222222222222",
+  "sender": "11111111-1111-4111-8111-111111111111",
   "priority": "MESSAGE_PRIORITY_HIGH",
   "timestamp": "2026-10-28T17:01:31.587209Z",
   "renderDetails": {
@@ -164,7 +164,7 @@ message SubagentSpec {
   "content": "<REDACTED_TASK_PROMPT>",
   "sourceMetadata": {
     "tool": {
-      "conversationId": "85f2109b-84aa-4779-a86c-59fc85eeeee8",
+      "conversationId": "11111111-1111-4111-8111-111111111111",
       "stepIndex": 12,
       "toolCall": {
         "id": "call_1372492",
@@ -217,7 +217,7 @@ message SubagentSpec {
   "type": "GENERIC",
   "status": "DONE",
   "created_at": "2026-10-28T17:01:29Z",
-  "content": "Created At: 2026-10-29T01:01:29+08:00\nCompleted At: 2026-10-29T01:01:31+08:00\nCreated the following subagent:\n{\n  \"conversationId\":  \"8f8241d6-87d0-429a-85af-89303676551b\",\n  \"logAbsoluteUri\":  \"file:///Users/will/.gemini/antigravity-cli/brain/8f8241d6-87d0-429a-85af-89303676551b/.system_generated/logs/transcript.jsonl\",\n  \"workspaceUris\":  [\n    \"file:///Users/will/projects/TokenUsageInsights\"\n  ]\n}\nThe subagent will send you a message when it has completed its task or requires guidance. There is no need to poll for its response."
+  "content": "Created At: 2026-10-29T01:01:29+08:00\nCompleted At: 2026-10-29T01:01:31+08:00\nCreated the following subagent:\n{\n  \"conversationId\":  \"22222222-2222-4222-8222-222222222222\",\n  \"logAbsoluteUri\":  \"file:///path/to/.gemini/antigravity-cli/brain/22222222-2222-4222-8222-222222222222/.system_generated/logs/transcript.jsonl\",\n  \"workspaceUris\":  [\n    \"file:///example/project\"\n  ]\n}\nThe subagent will send you a message when it has completed its task or requires guidance. There is no need to poll for its response."
 }
 ```
 
@@ -233,7 +233,7 @@ message SubagentSpec {
     "type": "SYSTEM_MESSAGE",
     "status": "DONE",
     "created_at": "2026-10-28T17:01:31Z",
-    "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the user. It is provided by the system as important information to pay attention to.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-28T17:01:31Z sender=85f2109b-84aa-4779-a86c-59fc85eeeee8 priority=MESSAGE_PRIORITY_HIGH content=<REDACTED_TASK_PROMPT>\n</SYSTEM_MESSAGE>"
+    "content": "The following is a <SYSTEM_MESSAGE> not actually sent by the user. It is provided by the system as important information to pay attention to.\n\n<SYSTEM_MESSAGE>\n[Message] timestamp=2026-10-28T17:01:31Z sender=11111111-1111-4111-8111-111111111111 priority=MESSAGE_PRIORITY_HIGH content=<REDACTED_TASK_PROMPT>\n</SYSTEM_MESSAGE>"
   }
   ```
 - **舊版（8 個，佔 3.9%）**：第 0 步為 `source: "USER_EXPLICIT", type: "USER_INPUT"`，格式與一般使用者輸入相同（`<USER_REQUEST>\n...\n</USER_REQUEST>`）。
@@ -304,7 +304,7 @@ message SubagentSpec {
 
 | `UsageEntry` 欄位 | 建議映射之 Antigravity 資料 | 範例值 | 前端顯示位置與理由 |
 |---|---|---|---|
-| `parent_session_id` | 直接父會話 `conversationId`（來源 A `field 5` 或來源 B 父目錄名稱或來源 C/D `sender`） | `"85f2109b-84aa-4779-a86c-59fc85eeeee8"` | 決定父子樹狀縮排、連接線、家族 Hover 高亮與父代理 Tooltip |
+| `parent_session_id` | 直接父會話 `conversationId`（來源 A `field 5` 或來源 B 父目錄名稱或來源 C/D `sender`） | `"11111111-1111-4111-8111-111111111111"` | 決定父子樹狀縮排、連接線、家族 Hover 高亮與父代理 Tooltip |
 | `agent_role` | `subagent_spec.role` / `subagentDescriptor.role`（若為空則 fallback 至 `type_name`） | `"Antigravity Subagent Researcher"`、`"Audio Builder Agent"` | 顯示於 `.agent-role-badge` 與抽屜「角色 (Role)」欄位；這是使用者或 Orchestrator 賦予子代理最具辨識度的工作職稱 |
 | `agent_nickname` | `subagent_spec.type_name` / `subagentDescriptor.typeName`（若與 `agent_role` 相同則設為 `None` 避免重複） | `"self"`、`"research"`、`"teamwork_preview_worker"` | 顯示於 `.agent-nickname-badge` 與抽屜「暱稱 (Nickname)」欄位，讓使用者一眼看出子代理使用的底層 Agent 型別 |
 | `session_name` | 子會話的初始任務提示詞摘要（前 100 字元，單行化） | `"Investigate GitHub Issue #73 (\"Antigravity 支援 subagent..."` | 顯示於 `.session-name-text` 主標題列，與頂層會話及 Claude / Codex 子代理命名慣例一致 |
@@ -394,20 +394,20 @@ message SubagentSpec {
 
 ### 3. 父子會話目錄的同步順序與延遲落盤
 
-- **情境 A（子會話先於父會話被掃描）**：`find_session_files` 依 UUID 字典序排序（[`src/antigravity.rs:31`](../../src/antigravity.rs#L31)），因此子會話 UUID（如 `01713a36-...`）經常排在父會話 UUID（如 `8275742f-...`）之前同步。
+- **情境 A（子會話先於父會話被掃描）**：`find_session_files` 依 UUID 字典序排序（[`src/antigravity.rs:31`](../../src/antigravity.rs#L31)），因此子會話 UUID（如 `11111111-...`）可能排在父會話 UUID（如 `99999999-...`）之前同步。
   - 因為子會話的 `parent_session_id`、`agent_role`、`agent_nickname` 直接儲存在**子會話自己**的 `conversations/<child_id>.db` 與 `transcript_full.jsonl` 中，並有父目錄 `.system_generated/subagents/<child_id>.json` 作為備援，子會話的解析完全不依賴父會話是否已經先寫入 TokenUsageInsights 的 SQLite。
 - **情境 B（父會話 `.system_generated/subagents/<child_id>.json` 在同步指紋中）**：
   - 若使用父目錄的 `.system_generated/subagents/<child_id>.json` 作為無 `.db` 時的備援來源，可將對應的 `subagents/<child_id>.json`（若存在）一併納入 [`src/db.rs:1511-1521`](../../src/db.rs#L1511-L1521) 的指紋雜湊計算中，確保 metadata 後到時也能觸發重同步。
 
 ### 4. 單一會話啟動多個 Subagent 與批次 `invoke_subagent`
 
-- Antigravity 支援在單一 `invoke_subagent` 工具呼叫中傳入 `Subagents: [...]` 一次平行啟動多個子代理（例如本機 `e20f809a-...` 單一父會話衍生了 45 個子代理；`4a7b29c7-...` 於 step 52 一次平行啟動 3 個子代理）。
+- Antigravity 支援在單一 `invoke_subagent` 工具呼叫中傳入 `Subagents: [...]` 一次平行啟動多個子代理（例如單一父會話衍生 45 個子代理，或於單一步驟平行啟動 3 個子代理）。
 - 每個子代理都有各自獨立的 `<child_id>`、`conversations/<child_id>.db` 與 `brain/<parent_id>/.system_generated/subagents/<child_id>.json`。
 - 因此**不應**從父會話 `transcript_full.jsonl` 的 `invoke_subagent` 工具參數反推子代理 metadata（因為批次呼叫時難以在未解析後續 `GENERIC` 輸出前對應哪個 `Role` 屬於哪個 `conversationId`），而應直接讀取子會話自身的 `CortexTrajectoryMetadata.subagent_spec`（來源 A）與 `subagents/<child_id>.json`（來源 B），既精確又天然支援批次啟動。
 
 ### 5. 多層巢狀 Subagent（Nested Subagents）
 
-- 本機實測存在 3 層架構（Root `8275742f-...` -> Depth 1 `01713a36-...` [`teamwork_preview`] -> Depth 2 `a6114d19-...` [`teamwork_preview_orchestrator`] -> Depth 3 Workers）。
+- 本機實測存在 3 層架構（Root `11111111-...` -> Depth 1 `22222222-...` [`teamwork_preview`] -> Depth 2 `33333333-...` [`teamwork_preview_orchestrator`] -> Depth 3 Workers）。
 - 在 `CortexTrajectoryMetadata` 中：
   - `field 5` (`parent_conversation_id`) 記錄的是**直接父代理**（Depth $N-1$），而非頂層根會話。
   - `field 6` (`root_conversation_id`) 記錄的才是最頂層根會話（Depth 0）。

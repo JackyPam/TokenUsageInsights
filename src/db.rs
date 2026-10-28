@@ -1518,6 +1518,7 @@ fn sync_antigravity_usage_logs_with_cancel(
     let source_key = encode_hex(root.as_os_str().as_encoded_bytes());
     let source_kind = crate::antigravity::SOURCE_KIND;
     let sync_states = load_sync_state_for_prefix(conn, "antigravity");
+    let subagent_descriptors = crate::antigravity_metadata::index_subagent_descriptor_paths(&root);
     for path in crate::antigravity::find_session_files(&root)? {
         if should_cancel() {
             return Ok(());
@@ -1526,18 +1527,25 @@ fn sync_antigravity_usage_logs_with_cancel(
             crate::antigravity::session_id(&path).ok_or("無效的 Antigravity session 路徑")?;
         let transcript = path.to_string_lossy().into_owned();
         let metadata = fs::metadata(&path).map_err(|e| e.to_string())?;
-        // Metadata may arrive after the transcript (including in SQLite WAL).
-        // Include all source revisions so a later model resolution is imported.
+        // Metadata may arrive after the transcript (including in SQLite WAL or
+        // parent subagents/<session_id>.json fallback). Include all source
+        // revisions so a later model or subagent descriptor resolution is imported.
         let modified = {
             use std::hash::{Hash, Hasher};
             let mut fingerprint = std::collections::hash_map::DefaultHasher::new();
             crate::antigravity::PARSER_VERSION.hash(&mut fingerprint);
             for file in [
-                path.clone(),
-                root.join("conversations").join(format!("{session_id}.db")),
-                root.join("conversations")
-                    .join(format!("{session_id}.db-wal")),
-            ] {
+                Some(path.clone()),
+                Some(root.join("conversations").join(format!("{session_id}.db"))),
+                Some(
+                    root.join("conversations")
+                        .join(format!("{session_id}.db-wal")),
+                ),
+                subagent_descriptors.get(session_id).cloned(),
+            ]
+            .into_iter()
+            .flatten()
+            {
                 if let Ok(meta) = fs::metadata(file) {
                     meta.len().hash(&mut fingerprint);
                     meta.modified().ok().hash(&mut fingerprint);
@@ -7971,9 +7979,9 @@ mod tests {
         let root = temp_jsonl_path("antigravity-subagent-hierarchy").with_extension("");
         fs::create_dir_all(root.join("conversations")).unwrap();
 
-        let parent_id = "85f2109b-84aa-4779-a86c-59fc85eeeee8";
-        let child_id = "8f8241d6-87d0-429a-85af-89303676551b";
-        let grandchild_id = "b71d707f-2269-413b-9902-98be9cf895e7";
+        let parent_id = "11111111-1111-4111-8111-111111111111";
+        let child_id = "22222222-2222-4222-8222-222222222222";
+        let grandchild_id = "33333333-3333-4333-8333-333333333333";
 
         // 1. Parent session with USER_INPUT
         let parent_transcript = root
@@ -8030,7 +8038,7 @@ mod tests {
             let mut blob = Vec::new();
             blob.extend(field(5, parent_id.as_bytes()));
             blob.extend(field(6, parent_id.as_bytes()));
-            blob.extend(field(7, b"file:///Users/will/projects/TokenUsageInsights"));
+            blob.extend(field(7, b"file:///example/project"));
             blob.extend(field(8, &subagent_spec));
             metadata
                 .execute(
@@ -8040,7 +8048,8 @@ mod tests {
                 .unwrap();
         }
 
-        // 3. Depth-2 nested subagent WITHOUT a .db file (fallback via SYSTEM_MESSAGE sender + subagents/<id>.json)
+        // 3. Depth-2 nested subagent WITHOUT a .db file; first sync runs before
+        // the parent subagents/<id>.json descriptor arrives on disk.
         let grandchild_transcript = root
             .join("brain")
             .join(grandchild_id)
@@ -8061,6 +8070,11 @@ mod tests {
             ),
         )
         .unwrap();
+
+        sync_antigravity_usage_logs_with_cancel(&mut conn, &root, &|| false).unwrap();
+
+        // Late-arriving parent subagents/<grandchild_id>.json must invalidate the
+        // synchronization fingerprint even when transcript_full.jsonl is unchanged.
         let subagents_dir = root
             .join("brain")
             .join(child_id)
@@ -8074,7 +8088,7 @@ mod tests {
                     "typeName": "research",
                     "role": "Protobuf Descriptor Auditor"
                 },
-                "workspaceUris": ["file:///Users/will/projects/TokenUsageInsights"]
+                "workspaceUris": ["file:///example/project"]
             })
             .to_string(),
         )
@@ -8122,7 +8136,7 @@ mod tests {
                 Some(parent_id.to_string()),
                 Some("self".to_string()),
                 Some("Antigravity Subagent Researcher".to_string()),
-                Some("/Users/will/projects/TokenUsageInsights".to_string()),
+                Some("/example/project".to_string()),
             )
         );
 
@@ -8134,7 +8148,7 @@ mod tests {
                 Some(child_id.to_string()),
                 Some("research".to_string()),
                 Some("Protobuf Descriptor Auditor".to_string()),
-                Some("/Users/will/projects/TokenUsageInsights".to_string()),
+                Some("/example/project".to_string()),
             )
         );
 

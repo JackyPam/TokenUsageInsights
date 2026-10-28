@@ -762,7 +762,7 @@ function updateLanguageUI() {
       if (yearSelect && yearSelect.value) showNoDataForYear(yearSelect.value);
     } else if (activeTab === 'range') {
       const { start, end } = getRangeInputs();
-      if (start && end) showNoDataForMonth(`${start}~${end}`);
+      if (isValidRange(start, end)) showNoDataForMonth(`${start}~${end}`);
     }
   }
 
@@ -2557,7 +2557,7 @@ function showNoDataForMonth(month, assistant = currentAssistant) {
   const meta = getAssistantMeta(resolvedAssistant);
   const title = t('no_data_for_month', resolvedAssistant)
     .replace('{agent}', meta.label)
-    .replace('{month}', month);
+    .replace('{month}', escapeHtml(month));
   const desc = t('no_data_for_month_desc', resolvedAssistant);
   const logoMarkup = `<div class="card-icon"><img src="${meta.logo}" alt="${meta.alt}" style="width: 56px; height: 56px; object-fit: contain;" /></div>`;
 
@@ -2616,7 +2616,7 @@ function showNoDataForMonth(month, assistant = currentAssistant) {
   if (yearlyView) yearlyView.classList.add('hidden');
 
   // 更新標題
-  setTitleMarkup('calendar', month);
+  setTitleMarkup('calendar', escapeHtml(month));
 }
 
 // 顯示「此 Agent 於當年無資料」的提示畫面
@@ -6685,7 +6685,7 @@ async function loadRangeData(assistant = currentAssistant) {
   showViewLoading(dimView);
   let updated = false;
   try {
-    setTitleMarkup('sync', label);
+    setTitleMarkup('sync', escapeHtml(label));
 
     const res = await fetch(`/api/${resolvedAssistant}/range/${start}/${end}`);
     if (mySeq !== rangeRequestSeq) return false;
@@ -6771,7 +6771,7 @@ function renderMonthlyDashboard(data) {
   const { year_month, summary, daily_breakdown, models, projects, agent_breakdown } = data;
 
   // 1. 更新標題
-  setTitleMarkup('calendar', year_month);
+  setTitleMarkup('calendar', escapeHtml(year_month));
 
   // 2. 更新指標卡片
   const activeAgents = getActiveAgents();

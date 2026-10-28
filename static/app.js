@@ -2024,6 +2024,8 @@ async function loadUsageData(date, assistant = currentAssistant) {
     const res = await fetch(`/api/${resolvedAssistant}/usage/${date}`);
     if (mySeq !== dailyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    // 日報、年報與區間共用外層容器：已切到週/區間時，遲到的回應不可覆蓋區間看板
+    if (activeTab === 'range') return;
     if (res.status === 404) {
       // 顯示「此 Agent 當日無資料」提示畫面，不改變日期
       showNoDataForDate(date, resolvedAssistant);
@@ -2034,6 +2036,7 @@ async function loadUsageData(date, assistant = currentAssistant) {
     const data = await res.json();
     if (mySeq !== dailyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab === 'range') return;
     toggleEmptyState(false, resolvedAssistant);
     renderDashboard(data);
     await updateCodexRateLimit();
@@ -2326,6 +2329,7 @@ async function executePendingUsageImport() {
     await fetchDates(null, true);
     await fetchMonths();
     await fetchYears();
+    if (activeTab === 'range') await loadRangeData();
   } catch (err) {
     console.error('Import failed:', err);
     showNotification(t('import_failed').replace('{msg}', err.message || String(err)), 'error');
@@ -5746,6 +5750,7 @@ async function loadYearlyData(year, assistant = currentAssistant) {
     const res = await fetch(`/api/${resolvedAssistant}/yearly/${year}`);
     if (mySeq !== yearlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab === 'range') return;
     if (res.status === 404) {
       showNoDataForYear(year, resolvedAssistant);
       return;
@@ -5754,6 +5759,7 @@ async function loadYearlyData(year, assistant = currentAssistant) {
     const data = await res.json();
     if (mySeq !== yearlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab === 'range') return;
     modelSessionDetailsCache.clear();
     toggleEmptyState(false, resolvedAssistant);
     renderYearlyDashboard(data);

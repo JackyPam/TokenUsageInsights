@@ -4,6 +4,10 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- 新增每日定價檢查 workflow（`.github/workflows/pricing-check.yml`）與 `scripts/pricing-check.mjs`：直接解析 Anthropic、OpenAI、Google Gemini、xAI 的官方定價文件，與 `pricing.csv` 比對，回報價格差異、促銷價到期提醒與尚未收錄的新模型；官方頁面抓取失敗或格式改版（解析不到價格）時視為錯誤。有異動時自動建立或更新 `pricing-drift` issue（#71）。僅產生報告，不會自動改寫 `pricing.csv`。
+
 ## [1.6.1] - 2026-10-29
 
 本次 patch release 新增 Docker 隔離式用量看板與管理腳本，並修正 Windows 透過 `npx` 安裝時 GNU tar 顯示誤導錯誤訊息的問題。

@@ -6,7 +6,9 @@
 
 ### 新增與改善
 
-- `export-all --out` 支援 Azure Blob Storage SAS URL：`--out` 為 `https://` 開頭時改以 `PUT`（BlockBlob）上傳，不寫入本機檔案。容器 SAS 不需指定檔名，預設為 `yyyy-MM-dd_HH-mm-ss_<電腦名稱>.json`（本機時間）；Blob SAS（`sr=b`）則寫入 URL 指定的 Blob。SAS URL 的 query string 原樣保留，成功與失敗訊息一律不輸出 SAS 簽章，`http://`、缺少 `sig` 或缺少容器名稱的 URL 會在讀取資料庫前以參數錯誤（結束碼 2）拒絕；上傳失敗時顯示 HTTP 狀態與 Azure 錯誤代碼。
+- `export-all --out` 支援 Azure Blob Storage SAS URL：`--out` 為 `https://` 開頭時改以 `PUT`（BlockBlob）上傳，不寫入本機檔案。容器 SAS 不需指定檔名，預設為 `yyyy-MM-dd_HH-mm-ss_<電腦名稱>.json`（本機時間）；Blob SAS（`sr=b`）則寫入 URL 指定的 Blob。SAS URL 的 query string 原樣保留，錯誤訊息不輸出 SAS 簽章，`http://`、缺少 `sig` 或缺少容器名稱的 URL 會在讀取資料庫前以參數錯誤（結束碼 2）拒絕；上傳失敗時顯示 HTTP 狀態與 Azure 錯誤代碼。
+- 上傳成功後印出不含 SAS 的 Blob 位址與可直接在另一台電腦執行的 `token-usage-insights import --url '<含 SAS 的完整網址>'` 命令；SAS 不含讀取權限（`sp` 無 `r`）時額外警告。該命令含 SAS 簽章，請妥善保管。
+- `import` 新增 `--url <URL>`，與 `--file` 擇一：以 HTTPS `GET` 下載（上限 200 MB、不跟隨重新導向）後沿用既有匯入與去重流程，匯入批次的來源檔名記錄 Blob 檔名；`http://`、容器網址（無檔名）、`--file` 與 `--url` 同時指定會在讀取資料庫前以參數錯誤（結束碼 2）拒絕，下載失敗時顯示 HTTP 狀態與 Azure 錯誤代碼。
 
 ### 相容性
 

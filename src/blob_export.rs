@@ -1,14 +1,17 @@
-//! 將 `export-all` 的 JSON 上傳至 Azure Blob Storage（以 SAS URL 授權）。
+//! 將 `export-all` 的 JSON 上傳至 Azure Blob Storage，並供 `import --url` 下載（以 SAS URL 授權）。
 //!
-//! SAS 的 `sig` 等同密碼：任何對外輸出（成功訊息、錯誤訊息）都不得包含 query string。
+//! SAS 的 `sig` 等同密碼：錯誤訊息與一般顯示位址都不得包含 query string；
+//! 唯一的例外是匯出成功後刻意印出的完整匯入命令（`export_success_message`）。
 
 use chrono::{DateTime, TimeZone};
 use reqwest::{StatusCode, Url};
 use std::time::Duration;
 
-/// 完整匯出可能很大，給予較長的整體逾時。
-const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
+/// 完整匯出可能很大，上傳與下載都給予較長的整體逾時。
+const NETWORK_TIMEOUT: Duration = Duration::from_secs(600);
 const FALLBACK_COMPUTER_NAME: &str = "unknown-host";
+/// 下載匯入檔的大小上限，與看板匯入 API 的上限（200 MB）一致。
+pub(crate) const MAX_DOWNLOAD_BYTES: usize = 200_000_000;
 
 /// `--out` 是否為 URL（`http://` 或 `https://`）；其餘一律視為本機檔案路徑。
 pub(crate) fn is_url(value: &str) -> bool {
@@ -128,15 +131,17 @@ pub(crate) fn display_url(url: &Url) -> String {
     shown.to_string()
 }
 
-pub(crate) async fn upload_json(url: &Url, body: String) -> Result<(), String> {
-    // 帶有憑證的 PUT 不跟隨重新導向。
-    let client = reqwest::Client::builder()
-        .timeout(UPLOAD_TIMEOUT)
+fn http_client() -> Result<reqwest::Client, String> {
+    // 帶有憑證的請求不跟隨重新導向。
+    reqwest::Client::builder()
+        .timeout(NETWORK_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| format!("建立 HTTP 用戶端失敗: {}", e.without_url()))?;
+        .map_err(|e| format!("建立 HTTP 用戶端失敗: {}", e.without_url()))
+}
 
-    let response = client
+pub(crate) async fn upload_json(url: &Url, body: String) -> Result<(), String> {
+    let response = http_client()?
         .put(url.clone())
         .header("x-ms-blob-type", "BlockBlob")
         .header(
@@ -157,6 +162,117 @@ pub(crate) async fn upload_json(url: &Url, body: String) -> Result<(), String> {
         "Azure Blob 回應 HTTP {status}{}",
         error_detail(&body)
     ))
+}
+
+/// 匯出成功後的提示：不含 SAS 的位址，加上可直接複製到另一台電腦執行的匯入命令。
+///
+/// 匯入命令刻意包含完整 SAS（使用者要求），呼叫端需提醒妥善保管。
+pub(crate) fn export_success_message(count: usize, url: &Url) -> String {
+    format!(
+        "已匯出 {count} 筆到 {}\n在另一台電腦匯入（網址已含 SAS，請妥善保管）：\ntoken-usage-insights import --url {}",
+        display_url(url),
+        shell_quote(url.as_str())
+    )
+}
+
+/// 以單引號包住整段 URL，避免 `&` 被 shell 當成背景執行；內含的單引號以 `'\''` 跳脫。
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
+/// SAS 有 `sp` 但不含讀取（`r`）時回傳其權限字串，另一台電腦將無法用同一網址匯入。
+pub(crate) fn sas_without_read_permission(url: &Url) -> Option<String> {
+    url.query_pairs()
+        .find(|(key, _)| key == "sp")
+        .map(|(_, value)| value.into_owned())
+        .filter(|permissions| !permissions.contains('r'))
+}
+
+/// 驗證 `import --url` 的網址：必須是 HTTPS，且指向單一檔案。SAS 為選用（公開 Blob 不需要）。
+pub(crate) fn parse_download_url(value: &str) -> Result<Url, String> {
+    let url = Url::parse(value).map_err(|e| format!("無法解析網址: {e}"))?;
+    if url.scheme() != "https" {
+        return Err("網址必須使用 HTTPS".to_string());
+    }
+    // 容器 SAS（sr=c）同樣可讀取容器內的 Blob，所以匯出時印出的完整網址帶有 sr=c；
+    // 只有網址停在容器本身、沒有檔名時才拒絕。
+    let is_container_sas = url
+        .query_pairs()
+        .any(|(key, value)| key == "sr" && value == "c");
+    let segment_count = url
+        .path_segments()
+        .map_or(0, |parts| parts.filter(|part| !part.is_empty()).count());
+    if is_container_sas && segment_count < 2 {
+        return Err("這是容器網址，請使用匯出時顯示的完整 Blob 網址（需包含檔名）".to_string());
+    }
+    if blob_file_name(&url).is_none() || url.path().ends_with('/') {
+        return Err("網址必須指向 JSON 檔案，例如 https://<account>.blob.core.windows.net/<container>/<檔名>.json?<SAS>".to_string());
+    }
+    Ok(url)
+}
+
+/// 網址最後一段（解碼後）；僅用作匯入批次的來源檔名，不含 query string。
+pub(crate) fn blob_file_name(url: &Url) -> Option<String> {
+    let last = url.path_segments()?.rfind(|segment| !segment.is_empty())?;
+    Some(percent_decode(last))
+}
+
+fn percent_decode(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = |offset: usize| {
+            bytes
+                .get(i + offset)
+                .and_then(|b| (*b as char).to_digit(16))
+        };
+        match (bytes[i], hex(1), hex(2)) {
+            (b'%', Some(high), Some(low)) => {
+                decoded.push((high * 16 + low) as u8);
+                i += 3;
+            }
+            (byte, _, _) => {
+                decoded.push(byte);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&decoded).into_owned()
+}
+
+pub(crate) async fn download_json(url: &Url, max_bytes: usize) -> Result<String, String> {
+    let mut response = http_client()?
+        .get(url.clone())
+        .send()
+        .await
+        .map_err(|e| format!("下載失敗: {}", e.without_url()))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("下載失敗：HTTP {status}{}", error_detail(&body)));
+    }
+    let too_large = || format!("匯入檔案超過大小上限（{} MB）", max_bytes / 1_000_000);
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(too_large());
+    }
+
+    let mut data = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("下載失敗: {}", e.without_url()))?
+    {
+        if data.len() + chunk.len() > max_bytes {
+            return Err(too_large());
+        }
+        data.extend_from_slice(&chunk);
+    }
+    String::from_utf8(data).map_err(|_| "下載內容不是有效的 UTF-8 文字".to_string())
 }
 
 /// 從 Azure 的 XML 錯誤內容取出 `<Code>` 與 `<Message>` 首行；不回傳整段內容。
@@ -365,6 +481,132 @@ mod tests {
         server.await.unwrap();
         assert!(err.contains("403"), "{err}");
         assert!(err.contains("AuthorizationPermissionMismatch"), "{err}");
+        assert!(!err.contains("secret"), "{err}");
+    }
+
+    #[test]
+    fn export_success_message_shows_a_ready_to_run_import_command() {
+        let url = build_blob_url(
+            &format!("https://acct.blob.core.windows.net/c?{SAS}"),
+            "2026-10-28_09-05-07_PC.json",
+        )
+        .unwrap();
+        let message = export_success_message(3, &url);
+        let lines: Vec<&str> = message.lines().collect();
+        assert_eq!(
+            lines[0],
+            "已匯出 3 筆到 https://acct.blob.core.windows.net/c/2026-10-28_09-05-07_PC.json"
+        );
+        assert!(!lines[0].contains("sig"));
+        assert_eq!(
+            lines[2],
+            format!(
+                "token-usage-insights import --url 'https://acct.blob.core.windows.net/c/2026-10-28_09-05-07_PC.json?{SAS}'"
+            )
+        );
+        // 匯入命令中的網址必須能被 import --url 接受並還原為同一個 Blob。
+        let quoted = lines[2].split_once("--url ").unwrap().1;
+        let parsed = parse_download_url(quoted.trim_matches('\'')).unwrap();
+        assert_eq!(parsed, url);
+    }
+
+    #[test]
+    fn shell_quote_escapes_single_quotes() {
+        assert_eq!(shell_quote("a&b"), "'a&b'");
+        assert_eq!(shell_quote("it's"), r"'it'\''s'");
+    }
+
+    #[test]
+    fn read_permission_warning_only_when_sp_lacks_r() {
+        let with =
+            |sp: &str| Url::parse(&format!("https://a.example/c/f.json?sp={sp}&sig=x")).unwrap();
+        assert_eq!(sas_without_read_permission(&with("racwl")), None);
+        assert_eq!(
+            sas_without_read_permission(&with("cw")),
+            Some("cw".to_string())
+        );
+        assert_eq!(
+            sas_without_read_permission(&Url::parse("https://a.example/c/f.json").unwrap()),
+            None
+        );
+    }
+
+    #[test]
+    fn download_url_must_be_https_and_point_to_a_file() {
+        let ok = "https://acct.blob.core.windows.net/c/2026-10-28_09-05-07_PC.json?sig=x";
+        assert!(parse_download_url(ok).is_ok());
+        assert!(parse_download_url("https://example.com/all.json").is_ok());
+        // 匯出時印出的網址就是容器 SAS（sr=c）加上 Blob 檔名，必須可匯入。
+        assert!(parse_download_url(
+            "https://acct.blob.core.windows.net/c/f.json?sr=c&sp=racwl&sig=x"
+        )
+        .is_ok());
+        for bad in [
+            "http://acct.blob.core.windows.net/c/f.json?sig=x",
+            "https://acct.blob.core.windows.net/c/?sig=x",
+            "https://acct.blob.core.windows.net/?sig=x",
+            "https://acct.blob.core.windows.net/c?sr=c&sig=secret",
+            "not a url",
+        ] {
+            let err = parse_download_url(bad).unwrap_err();
+            assert!(!err.contains("secret"), "{err}");
+        }
+    }
+
+    #[test]
+    fn blob_file_name_is_decoded_and_has_no_query() {
+        let url = Url::parse(
+            "https://acct.blob.core.windows.net/c/2026-10-28_09-05-07_%E4%BF%9D%E5%93%A5.json?sig=secret",
+        )
+        .unwrap();
+        assert_eq!(
+            blob_file_name(&url).as_deref(),
+            Some("2026-10-28_09-05-07_保哥.json")
+        );
+        assert_eq!(percent_decode("a%2"), "a%2");
+        assert_eq!(percent_decode("a%zz"), "a%zz");
+    }
+
+    #[tokio::test]
+    async fn download_returns_the_body_on_200() {
+        let body = "{\"exports\":[]}";
+        let (url, server) = serve_once(format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        ))
+        .await;
+        let text = download_json(&url, 1024).await.unwrap();
+        assert_eq!(text, body);
+        assert!(server
+            .await
+            .unwrap()
+            .starts_with("GET /c/f.json?sig=secret HTTP/1.1"));
+    }
+
+    #[tokio::test]
+    async fn download_rejects_oversized_bodies() {
+        let body = "x".repeat(64);
+        let (url, server) = serve_once(format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        ))
+        .await;
+        let err = download_json(&url, 16).await.unwrap_err();
+        server.await.unwrap();
+        assert!(err.contains("大小上限"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn download_failure_reports_status_and_code_but_not_the_signature() {
+        let body = "<Error><Code>BlobNotFound</Code><Message>The specified blob does not exist.</Message></Error>";
+        let (url, server) = serve_once(format!(
+            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        ))
+        .await;
+        let err = download_json(&url, 1024).await.unwrap_err();
+        server.await.unwrap();
+        assert!(err.contains("404") && err.contains("BlobNotFound"), "{err}");
         assert!(!err.contains("secret"), "{err}");
     }
 

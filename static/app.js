@@ -1624,6 +1624,7 @@ function switchTab(tab, options = {}) {
   document.getElementById('range-selector-section')?.classList.toggle('hidden', tab !== 'range');
   document.getElementById('tab-btn-range')?.classList.toggle('active', tab === 'range');
   applyMonthlyViewMode(tab);
+  updateExportButtonForTab();
 
   // Update custom hover dropdown UI
   const tabLabelEls = document.querySelectorAll('.tab-dropdown-label');
@@ -2072,7 +2073,7 @@ function getUsageExportFilename(payload) {
 }
 
 async function exportCurrentUsageDay() {
-  if (isAllAssistantsScope()) return;
+  if (isAllAssistantsScope() || activeTab === 'range') return;
   const period = getCurrentUsagePeriod();
   const btnExport = document.getElementById('btn-export-usage-day');
   if (btnExport) btnExport.classList.add('loading');
@@ -2763,6 +2764,13 @@ const agentTrendBreakdowns = new Map();
 const savedAgentTrendMetric = localStorage.getItem(AGENT_TREND_METRIC_STORAGE_KEY);
 let agentTrendMetric = AGENT_TREND_METRICS.includes(savedAgentTrendMetric) ? savedAgentTrendMetric : 'cost';
 
+// 匯出尚不支援自訂區間：在週/區間分頁隱藏匯出鈕，避免靜默匯出單日資料
+function updateExportButtonForTab() {
+  const btnExport = document.getElementById('btn-export-usage-day');
+  if (!btnExport) return;
+  btnExport.classList.toggle('hidden', isAllAssistantsScope() || activeTab === 'range');
+}
+
 function updateAssistantScopeUI() {
   const isAll = isAllAssistantsScope();
   document.body.classList.toggle('all-agents-scope', isAll);
@@ -2770,6 +2778,7 @@ function updateAssistantScopeUI() {
   ['btn-export-usage-day', 'btn-import-usage-day', 'btn-import-history'].forEach(id => {
     document.getElementById(id)?.classList.toggle('hidden', isAll);
   });
+  updateExportButtonForTab();
   AGENT_SHARE_VIEWS.forEach(view => {
     document.getElementById(`${view}-agent-share-section`)?.classList.toggle('hidden', !isAll);
   });
@@ -6717,6 +6726,8 @@ async function loadMonthlyData(month, assistant = currentAssistant) {
     const res = await fetch(`/api/${resolvedAssistant}/monthly/${month}`);
     if (mySeq !== monthlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    // 月報與區間共用看板：若已切到週/區間，不可讓遲到的月報覆蓋區間結果
+    if (activeTab !== 'monthly') return;
     if (res.status === 404) {
       showNoDataForMonth(month, resolvedAssistant);
       return;
@@ -6725,6 +6736,7 @@ async function loadMonthlyData(month, assistant = currentAssistant) {
     const data = await res.json();
     if (mySeq !== monthlyRequestSeq) return;
     if (currentAssistant !== resolvedAssistant) return;
+    if (activeTab !== 'monthly') return;
     modelSessionDetailsCache.clear();
     toggleEmptyState(false, resolvedAssistant);
     renderMonthlyDashboard(data);

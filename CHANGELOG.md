@@ -4,13 +4,33 @@
 
 ## [未發行]
 
-### 修正
+## [1.6.2] - 2026-10-29
 
-- 依官方定價文件校正 `pricing.csv`：`gpt-5.6-sol`（含別名 `gpt-daybreak-blue`、`gpt-daybreak-blue-latest`）為 4.00／0.40／20.00，`gpt-5.6-terra` 為 2.00／0.20／12.00，`gpt-5.6-luna`（含別名 `gpt-reserve`）為 0.20／0.02／1.20，`GPT-5.4-mini` 快取輸入為 0.075，`gemini-3-flash-preview` 快取輸入為 0.05。這會改變上述模型的成本估算（issue #79）。
+本次 patch release 新增週／自訂區間分析與 Antigravity 子代理資訊，並更新官方模型定價及看板修正。
 
 ### 新增與改善
 
-- 新增每日定價檢查 workflow（`.github/workflows/pricing-check.yml`）與 `scripts/pricing-check.mjs`：直接解析 Anthropic、OpenAI、Google Gemini、xAI 的官方定價文件，與 `pricing.csv` 比對，回報價格差異、促銷價到期提醒與尚未收錄的新模型；官方頁面抓取失敗或格式改版（解析不到價格）時視為錯誤。有異動時自動建立或更新 `pricing-drift` issue（#71）。僅產生報告，不會自動改寫 `pricing.csv`。
+- 新增「週／區間」用量分析分頁，提供 ISO 週、本週、上週、最近 2／4 週、自訂日期範圍與前後區間切換；顯示區間總量、費用、每日趨勢與彙總，並支援網址還原期間。新增 `GET /api/:assistant/range/:start/:end`，最長 366 天；模型 Session 期間查詢新增 `start~end` 格式。
+- Antigravity 原生會話新增子代理階層、名稱與角色標籤，並在時間軸呈現父子代理傳遞的提示詞及系統生命週期訊息；支援巢狀子代理與提示詞搜尋。
+- 新增每日模型定價檢查 workflow，解析 Anthropic、OpenAI、Google Gemini 與 xAI 的官方定價文件，回報 `pricing.csv` 價格差異、促銷價期限、尚未收錄的模型及抓取／解析錯誤；發現異動時建立或更新 `pricing-drift` issue。此檢查只產生報告，不會自動改寫定價檔。
+
+### 修正
+
+- 依官方定價文件校正 `pricing.csv`：`gpt-5.6-sol`（含 `gpt-daybreak-blue`、`gpt-daybreak-blue-latest`）調整為輸入／快取輸入／輸出 4.00／0.40／20.00 美元，`gpt-5.6-terra` 為 2.00／0.20／12.00，`gpt-5.6-luna`（含 `gpt-reserve`）為 0.20／0.02／1.20；`GPT-5.4-mini` 快取輸入調整為 0.075，`gemini-3-flash-preview` 快取輸入調整為 0.05。上述價格會改變相關用量的費用估算。
+- 修正日、年報與區間看板的遲到回應互相覆蓋、區間匯入後未重新載入，以及只有在資料確實更新時才顯示重新整理成功通知的問題；調整日／月／年與區間分頁的選擇器及分頁控制版面。
+- 修正區間標題與無資料畫面的 HTML 插入處理，避免文字被當成標記解析，並解除 CodeQL 高風險警示。
+
+### 資料影響
+
+- Antigravity 解析器版本升級後，既有原生會話會在後續同步時重新解析並補上子代理階層與角色資料；無須清除資料庫或執行破壞性遷移。
+
+### 相容性
+
+- 未變更 SQLite 資料表結構或執行期環境變數。新增區間查詢 API 與模型 Session 區間參數；既有日、月、年查詢行為維持不變。
+
+### 變更
+
+- 將 `rustls` 更新至 0.23.46，並更新 GitHub Actions runner 與 workflow action 版本，以維持 CI 建置環境。
 
 ## [1.6.1] - 2026-10-29
 
@@ -1059,7 +1079,8 @@
 - 修正行動版側邊欄遮擋、黑畫面、標題擠壓、圖表導覽索引與年度版面問題。
 - 修正並補齊多個 Gemini、Claude、GPT 與 GPT-OSS 模型的定價規則。
 
-[未發行]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.1.0...HEAD
+[未發行]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.6.2...HEAD
+[1.6.2]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.6.1...v1.6.2
 [1.1.0]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.0.6...v1.1.0
 [1.0.6]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.0.5...v1.0.6
 [1.0.5]: https://github.com/doggy8088/TokenUsageInsights/compare/v1.0.4...v1.0.5

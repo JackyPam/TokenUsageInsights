@@ -77,40 +77,50 @@ gh api users/<author> --jq '{login,created_at,public_repos,followers}'
 - **NEEDS HUMAN REVIEW**：含高風險檔案、或有無法解釋的差異。→ 留言分析後停止，**不核准 workflows**，交由維護者決定。
 - **UNSAFE／INVALID**：發現惡意或明顯不一致行為。→ 留言（或僅回報給使用者，視嚴重度）後停止；不得請求 Copilot、不得核准 workflows，並建議維護者關閉 PR／封鎖使用者。
 
-只有 **SAFE** 才能繼續第 4 步。對 `NEEDS HUMAN REVIEW` 與 `UNSAFE`，在採取任何有留言以外的動作前先回報使用者。
+第 4 步的留言可用於 SAFE 與 NEEDS HUMAN REVIEW（結論寫在第一句）；只有 **SAFE** 才能繼續第 5 步。對 `NEEDS HUMAN REVIEW` 與 `UNSAFE`，在採取任何有留言以外的動作前先回報使用者。
 
 ## 4. 留下分析留言（給下一步 code review agent 的上下文）
 
-在請求 Copilot review **之前**發佈，確保 reviewer 能讀到。以正體中文（台灣用語）撰寫，開頭固定標記，方便辨識與避免重複留言：
+在請求 Copilot review **之前**發佈，確保 reviewer 能讀到。以正體中文（台灣用語）撰寫，開頭固定標記，方便辨識與避免重複留言。
+
+### 撰寫方式：使用 `/humanizer` 技能
+
+1. 先讀取 `/Users/will/.gemini/skills/humanizer/SKILL.md`，依其 **Embedded mode** 撰寫留言，只輸出最終文字。
+2. 草稿完成後再用 humanizer 的清單自我檢查一次，重點是這幾項：
+   - 不寫「不是 X 而是 Y」、一行總結句、「值得注意的是」之類的鋪陳。
+   - 不硬湊三項並列，不用破折號串句，不用 emoji、箭頭和裝飾性標題。
+   - 不用粗體當標籤，不寫「本留言由 AI 產生」之類的客套或免責語。
+   - 不寫沒有依據的形容詞（例如「重大」「關鍵」「完善」），只陳述查到的事實。
+3. 不得為了讀起來自然而增減事實。檔名、行為、數字、commit SHA 都必須與第 1 到 3 步的查核結果一致。程式碼區塊、行內程式碼、路徑與開頭的 HTML 標記保持原樣。
+4. 結論分級（SAFE、NEEDS HUMAN REVIEW）直接寫在第一句，讓 reviewer 不用讀完才知道結果。
 
 ```bash
 gh pr comment $PR -R $REPO --body-file /tmp/fix-pr-$PR.md
 ```
 
-留言範本：
+### 留言範本（已套用 humanizer 風格）
+
+範本是語氣與結構的參考，不要逐字照抄。沒有內容的段落直接省略，不要寫「無」來湊格式。
 
 ```markdown
 <!-- fix-pr-analysis: head=<headRefOid> -->
-## PR 預審分析（針對 `<headRefOid 前 7 碼>`）
+預審結論：SAFE。針對 `<headRefOid 前 7 碼>` 檢查，描述與程式碼一致，沒有發現可疑行為。
 
-**結論：SAFE／NEEDS HUMAN REVIEW**
+## 變更內容
 
-### PR 宣稱 vs 實際變更
-- 宣稱：…
-- 實際變更（逐檔）：`path`：…
-- 一致性：已宣稱且實作／宣稱未實作／未宣稱卻實作（無或列出）
+PR 說要補匯 Copilot App 新 session 的用量。實際只改了 `src/…`：（逐檔用一兩句說明改了什麼）。標題、描述和 commit 訊息都對得上，沒有未提到的額外變更。
 
-### 安全檢查
-- 高風險檔案：無／列出
-- 外連、程式碼執行、敏感資料存取、隱藏字元、新增相依：皆未發現／列出
-- 作者概況：<login>、帳號建立時間、與本 repo 互動
+## 安全檢查
 
-### 給 code review 的重點
-- 請特別檢視：<邏輯風險、邊界條件、回歸風險、缺少的測試>
-- 專案規範提醒：零編譯警告、`cargo fmt`、保留雙語 UI 文字、assistant 識別碼不可更名
-- 尚未執行：未在本機建置或執行 PR 程式碼；待 workflows 結果
+沒有動到 workflow、`build.rs`、npm 腳本或相依套件，也沒有新增外連、命令執行或讀取資料目錄以外的路徑。diff 中沒有隱藏字元或二進位檔。作者 `<login>` 的帳號建立於 <日期>，之前與本 repo 的互動：<實際情況>。
 
-> 本留言由預審流程產生，不代表核准合併。
+## 給 code review 的重點
+
+- <邏輯風險或邊界條件，指到檔案與函式>
+- <缺少的測試>
+- 這個 repo 要求零編譯警告、`cargo fmt`、保留雙語 UI 文字，assistant 識別碼不可更名。
+
+我沒有在本機建置或執行 PR 的程式碼，測試結果要看接下來的 workflows。這是預審，不是核准合併。
 ```
 
 若相同 `head` 的標記留言已存在則不重複發佈；head 變動則發佈新留言。

@@ -4,6 +4,11 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- 新增 `docker/` 資料夾，提供最小化容器映像檔與管理腳本 `docker/tui-docker.sh`，用來分開檢視不同人的用量資料。`Dockerfile` 以 `rust:1-alpine` 編譯 musl 靜態執行檔、執行階段僅使用 `alpine:3.22`，以非 root 使用者執行並停用自我更新；資料庫固定在 `/data` 具名磁碟區，容器內不讀取任何本機 AI 工具日誌。
+- `tui-docker.sh up <名稱> [檔案|SAS URL...]` 一行命令完成建置映像檔、建立 `tui-<名稱>` 容器與 `tui-<名稱>-data` 磁碟區、自動挑選僅綁定 `127.0.0.1` 的本機埠號、匯入資料並開啟瀏覽器；另提供 `import`、`open`、`url`、`export`、`logs`、`stop`、`rm [--purge]`、`ls`、`build` 子命令。匯入以 `docker exec` 執行，SAS URL 不會寫入容器設定，終端機也只顯示不含 query string 的網址。
+
 ## [1.6.0] - 2026-10-28
 
 本次 minor release 新增 Azure Blob Storage SAS 匯出與 HTTPS 網址匯入，讓多台電腦可透過完整用量匯出檔交換資料。

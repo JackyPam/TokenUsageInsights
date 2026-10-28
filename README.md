@@ -547,6 +547,15 @@ cargo build --release --bin token-usage-insights
 
 `import_source_id` 會與 `assistant_type` 一起做唯一鍵，重複匯入同一筆會被判為重複並自動跳過，不會重複寫入資料庫。
 
+### 以 Docker 容器分開檢視不同人的資料
+
+若要檢視他人匯出的資料、又不想和本機資料混在一起，可以使用 [`docker/`](docker/README.md) 資料夾提供的最小化容器與管理腳本。每個名稱各有獨立的容器、資料磁碟區與本機埠號，一行命令即可建立容器、匯入檔案或 SAS URL 並開啟瀏覽器：
+
+```bash
+docker/tui-docker.sh up alice ~/Downloads/alice-usage.json
+docker/tui-docker.sh up bob 'https://<account>.blob.core.windows.net/<container>/<檔名>.json?<SAS>'
+```
+
 * * *
 
 ## 環境變數

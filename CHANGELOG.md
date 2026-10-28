@@ -4,6 +4,14 @@
 
 ## [未發行]
 
+### 新增與改善
+
+- `export-all --out` 支援 Azure Blob Storage SAS URL：`--out` 為 `https://` 開頭時改以 `PUT`（BlockBlob）上傳，不寫入本機檔案。容器 SAS 不需指定檔名，預設為 `yyyy-MM-dd_HH-mm-ss_<電腦名稱>.json`（本機時間）；Blob SAS（`sr=b`）則寫入 URL 指定的 Blob。SAS URL 的 query string 原樣保留，成功與失敗訊息一律不輸出 SAS 簽章，`http://`、缺少 `sig` 或缺少容器名稱的 URL 會在讀取資料庫前以參數錯誤（結束碼 2）拒絕；上傳失敗時顯示 HTTP 狀態與 Azure 錯誤代碼。
+
+### 相容性
+
+- 本機檔案與 stdout 輸出行為、匯出 JSON 格式、資料庫結構與環境變數均未變更；`export`（單一 Agent）暫不支援 SAS URL。
+
 ## [1.5.1] - 2026-10-27
 
 本次 patch release 補上 OpenAI GPT-6.1 Terra 的官方定價資料。

@@ -1,5 +1,6 @@
+use crate::blob_export;
 use crate::db;
-use chrono::{SecondsFormat, Utc};
+use chrono::{Local, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -46,6 +47,7 @@ const HELP_TEXT: &str = r#"Token 戰情室：看板、使用量匯入 / 匯出�
   例如:
   token-usage-insights export --agent codex --date 2026-07-09 --out daily.json
   token-usage-insights export-all --out all-usage.json
+  token-usage-insights export-all --out 'https://<account>.blob.core.windows.net/<container>?<SAS>'
 
 匯入:
   token-usage-insights import --file <path> [--agent <name>]
@@ -54,6 +56,8 @@ const HELP_TEXT: &str = r#"Token 戰情室：看板、使用量匯入 / 匯出�
 
 注意:
   - 若未指定 export 的 --out，會直接輸出到 stdout
+  - export-all 的 --out 可為 Azure Blob 容器的 SAS URL（HTTPS）；未指定檔名時，
+    檔名為 yyyy-MM-dd_HH-mm-ss_<電腦名稱>.json（本機時間），SAS 需具備 create/write 權限
   - import 自動依檔案 assistant 判斷 Agent，完整匯出檔會匯入全部 Agent
   - --agent 僅供篩選完整匯出檔或指定舊檔 Agent；單一 Agent 檔案必須一致
   - import 會以 `assistant_type + import_source_id` 做資料去重，重複匯入只會插入一次
@@ -205,7 +209,7 @@ pub(crate) async fn run(args: &[String]) -> Option<i32> {
 
     Some(match subcmd_args[0].as_str() {
         "export" => run_export(&subcmd_args[1..]),
-        "export-all" => run_export_all(&subcmd_args[1..]),
+        "export-all" => run_export_all(&subcmd_args[1..]).await,
         "import" => run_import(&subcmd_args[1..]),
         "update" | "--update" | "-u" => run_update_cli(&subcmd_args[1..]).await,
         "-V" | "--version" | "version" => {
@@ -262,9 +266,28 @@ fn collect_all_exports(conn: &rusqlite::Connection) -> Result<UsageAllExportPayl
     })
 }
 
-fn run_export_all(args: &[String]) -> i32 {
+/// `export-all --out` 的輸出目的地；在讀取資料庫前就解析完成，參數錯誤時不碰資料庫與網路。
+enum ExportAllTarget {
+    Stdout,
+    File(String),
+    Blob(reqwest::Url),
+}
+
+fn resolve_export_all_target(out: Option<String>) -> Result<ExportAllTarget, String> {
+    match out {
+        None => Ok(ExportAllTarget::Stdout),
+        Some(out) if blob_export::is_url(&out) => {
+            let file_name =
+                blob_export::export_file_name(&Local::now(), &blob_export::computer_name());
+            blob_export::build_blob_url(&out, &file_name).map(ExportAllTarget::Blob)
+        }
+        Some(out) => Ok(ExportAllTarget::File(out)),
+    }
+}
+
+async fn run_export_all(args: &[String]) -> i32 {
     if has_help(args) {
-        println!("export-all usage:\n  token-usage-insights export-all [--out <path>]\n\n匯出資料庫已收錄的所有 Agent、所有日期與完整使用量欄位。\n--out <path>  輸出 JSON 檔案；省略時輸出到 stdout。\n不接受 --agent 或 --date 篩選；不會掃描尚未同步的來源日誌。");
+        println!("export-all usage:\n  token-usage-insights export-all [--out <path|SAS URL>]\n\n匯出資料庫已收錄的所有 Agent、所有日期與完整使用量欄位。\n--out <path>     輸出 JSON 檔案；省略時輸出到 stdout。\n--out <SAS URL>  上傳到 Azure Blob Storage，例如：\n                 'https://<account>.blob.core.windows.net/<container>?<SAS>'\n                 容器 SAS 不需指定檔名，預設為 yyyy-MM-dd_HH-mm-ss_<電腦名稱>.json（本機時間）；\n                 Blob SAS（sr=b）則寫入該 SAS 指定的 Blob。SAS 需具備 create/write 權限，且必須使用 HTTPS。\n不接受 --agent 或 --date 篩選；不會掃描尚未同步的來源日誌。");
         return 0;
     }
     let mut out_path = None;
@@ -279,7 +302,14 @@ fn run_export_all(args: &[String]) -> i32 {
         }
         i += 1;
     }
-    let result = (|| -> Result<(), String> {
+    let target = match resolve_export_all_target(out_path) {
+        Ok(target) => target,
+        Err(err) => {
+            eprintln!("--out 參數無效: {err}");
+            return 2;
+        }
+    };
+    let result = async {
         let conn = db::get_db_conn()?;
         db::init_db(&conn)?;
         let payload = collect_all_exports(&conn)?;
@@ -289,14 +319,20 @@ fn run_export_all(args: &[String]) -> i32 {
             .map(|group| group.records.len())
             .sum();
         let json = serde_json::to_string_pretty(&payload).map_err(|err| err.to_string())?;
-        if let Some(out) = out_path {
-            fs::write(&out, json).map_err(|err| format!("寫入檔案失敗 {out}: {err}"))?;
-            println!("已匯出 {count} 筆到 {out}");
-        } else {
-            println!("{json}");
+        match target {
+            ExportAllTarget::File(out) => {
+                fs::write(&out, json).map_err(|err| format!("寫入檔案失敗 {out}: {err}"))?;
+                println!("已匯出 {count} 筆到 {out}");
+            }
+            ExportAllTarget::Blob(url) => {
+                blob_export::upload_json(&url, json).await?;
+                println!("已匯出 {count} 筆到 {}", blob_export::display_url(&url));
+            }
+            ExportAllTarget::Stdout => println!("{json}"),
         }
-        Ok(())
-    })();
+        Ok::<(), String>(())
+    }
+    .await;
     match result {
         Ok(()) => 0,
         Err(err) => {

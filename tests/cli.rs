@@ -39,6 +39,8 @@ fn help_and_invalid_commands_exit_without_initializing_the_server() {
         vec!["export"],
         vec!["import"],
         vec!["export-all", "--out"],
+        vec!["export-all", "--out", "http://example.com/c?sig=x"],
+        vec!["export-all", "--out", "https://example.com/c?sv=2025-07-05"],
         vec!["update", "--unknown"],
         vec!["update", "-v", "-f"],
         vec!["update", "--target-version", "--check"],

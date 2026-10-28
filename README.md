@@ -491,11 +491,21 @@ cargo build --release --bin token-usage-insights
 # 一次匯出所有 Agent、所有日期的使用量記錄
 ./target/release/token-usage-insights export-all --out all-usage.json
 
+# 直接上傳到 Azure Blob Storage 容器（SAS URL），檔名自動產生
+./target/release/token-usage-insights export-all --out 'https://<account>.blob.core.windows.net/<container>?<SAS>'
+
 # 自動判斷 Agent，匯入完整匯出檔的全部 Agent 與日期
 ./target/release/token-usage-insights import --file all-usage.json
 ```
 
 `export-all` 不需指定 Agent 或日期；省略 `--out` 時輸出 JSON 到 stdout。匯出涵蓋 SQLite 已收錄的所有使用量記錄，包含原生與匯入資料，保留既有匯出格式的完整欄位及 `import_source_id`。執行前請透過看板完成來源日誌同步；此命令不會自行掃描來源日誌，也不是包含原始對話檔、設定與匯入批次歷程的資料庫備份。
+
+`--out` 為 `https://` 開頭的 SAS URL 時，`export-all` 會以 `PUT` 上傳到 Azure Blob Storage，不寫入本機檔案：
+
+- 容器 SAS（`sr=c`）不需指定檔名，預設檔名為 `yyyy-MM-dd_HH-mm-ss_<電腦名稱>.json`（本機時間，例如 `2026-10-28_19-03-07_WILL-PC.json`）；電腦名稱中的空白、`/` 等特殊字元會轉為 `-`。Blob SAS（`sr=b`）則直接寫入該 SAS 指定的 Blob。
+- SAS 至少需具備 create 與 write 權限（`sp` 含 `c`、`w`），且必須使用 HTTPS；上傳成功回應 HTTP 201。同名 Blob 已存在時會被覆寫，SAS 無寫入權限時則回報 403。
+- 成功與失敗訊息只會顯示不含 query string 的 Blob 位址，SAS 簽章不會輸出到終端機。Shell 中請以單引號包住整段 URL，避免 `&` 被解讀為背景執行。
+- 匯出內容包含 `cwd`、`transcript_path`、`session_name` 等路徑與名稱欄位，請確認目標容器的存取權限與 SAS 有效期限。
 
 完整匯出檔包含 `version`、`exported_at` 與 `exports` 陣列；每個元素都是原有格式的單一 Agent、單日匯出，依 Agent 與日期排序。空資料庫會輸出空的 `exports` 陣列。`import --file` 自動依檔案中的 `assistant` 匯入所有 Agent；單一 Agent 檔案也可自動辨識。只有需要篩選特定 Agent，或舊檔缺少 `assistant` 時，才需要指定 `--agent`。缺少或不支援的 Agent 會在寫入前回報錯誤。
 

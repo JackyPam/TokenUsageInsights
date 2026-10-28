@@ -14,6 +14,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 mod antigravity;
 mod antigravity_metadata;
+mod blob_export;
 mod browser;
 mod cli;
 mod config;

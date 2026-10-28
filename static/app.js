@@ -6651,8 +6651,9 @@ function initRangeControls() {
     btnReloadRange.addEventListener('click', async () => {
       btnReloadRange.classList.add('loading');
       try {
-        await loadRangeData();
-        showNotification(t('range_reload_success'), 'success');
+        if (await loadRangeData()) {
+          showNotification(t('range_reload_success'), 'success');
+        }
       } catch (err) {
         console.error('Reload failed:', err);
         showNotification(t('reload_failed'), 'error');
@@ -6667,7 +6668,7 @@ async function loadRangeData(assistant = currentAssistant) {
   const { start, end } = getRangeInputs();
   if (!isValidRange(start, end)) {
     showNotification(t('range_invalid'), 'error');
-    return;
+    return false;
   }
   const label = `${start}~${end}`;
   const resolvedAssistant = normalizeAssistant(assistant);
@@ -6676,25 +6677,27 @@ async function loadRangeData(assistant = currentAssistant) {
   const dimView = !currentMonthlyData || currentMonthlyData.year_month !== label;
   rangeInFlightTarget = label;
   showViewLoading(dimView);
+  let updated = false;
   try {
     setTitleMarkup('sync', label);
 
     const res = await fetch(`/api/${resolvedAssistant}/range/${start}/${end}`);
-    if (mySeq !== rangeRequestSeq) return;
-    if (currentAssistant !== resolvedAssistant || activeTab !== 'range') return;
+    if (mySeq !== rangeRequestSeq) return false;
+    if (currentAssistant !== resolvedAssistant || activeTab !== 'range') return false;
     if (res.status === 404) {
       showNoDataForMonth(label, resolvedAssistant);
-      return;
+      return true;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-    if (mySeq !== rangeRequestSeq) return;
-    if (currentAssistant !== resolvedAssistant || activeTab !== 'range') return;
+    if (mySeq !== rangeRequestSeq) return false;
+    if (currentAssistant !== resolvedAssistant || activeTab !== 'range') return false;
     modelSessionDetailsCache.clear();
     toggleEmptyState(false, resolvedAssistant);
     applyMonthlyViewMode('range');
     renderMonthlyDashboard(data);
+    updated = true;
   } catch (err) {
     console.error('載入區間彙整失敗:', err);
     if (mySeq === rangeRequestSeq) showNotification(t('range_load_failed'), 'error');
@@ -6705,6 +6708,7 @@ async function loadRangeData(assistant = currentAssistant) {
       clearTitleSpinner();
     }
   }
+  return updated;
 }
 
 // =========================================================================

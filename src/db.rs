@@ -5992,11 +5992,17 @@ pub fn get_available_dates(
     Ok(dates)
 }
 
+enum DateMatch<'a> {
+    Exact(&'a str),
+    Prefix(&'a str),
+    /// Inclusive `YYYY-MM-DD` range.
+    Range(&'a str, &'a str),
+}
+
 fn query_usage_entries(
     conn: &rusqlite::Connection,
-    date_filter: &str,
+    date_match: DateMatch<'_>,
     assistant: &str,
-    exact_date: bool,
 ) -> Result<Vec<UsageDayRecordWithAssistant>, String> {
     let mut query = "SELECT
             timestamp, session_id, session_name, transcript_path, cwd, version, turn_no, model, model_id,
@@ -6005,9 +6011,22 @@ fn query_usage_entries(
             duration_ms, premium_requests, parent_session_id, agent_nickname, agent_role, assistant_type, reasoning_effort, import_source_id, source_kind, source_dir_key, reported_cost_usd
             , usage_identity, date
          FROM usage_entries WHERE date ".to_string();
-    query.push_str(if exact_date { "= ?" } else { "LIKE ?" });
     let mut params_vec = Vec::new();
-    params_vec.push(rusqlite::types::Value::Text(date_filter.to_string()));
+    match date_match {
+        DateMatch::Exact(date) => {
+            query.push_str("= ?");
+            params_vec.push(rusqlite::types::Value::Text(date.to_string()));
+        }
+        DateMatch::Prefix(prefix) => {
+            query.push_str("LIKE ?");
+            params_vec.push(rusqlite::types::Value::Text(prefix.to_string()));
+        }
+        DateMatch::Range(start, end) => {
+            query.push_str("BETWEEN ? AND ?");
+            params_vec.push(rusqlite::types::Value::Text(start.to_string()));
+            params_vec.push(rusqlite::types::Value::Text(end.to_string()));
+        }
+    }
 
     if assistant != "all" {
         let assistants: Vec<&str> = assistant.split(',').collect();
@@ -6218,7 +6237,7 @@ pub fn get_usage_entries_by_date(
     date: &str,
     assistant: &str,
 ) -> Result<Vec<UsageDayRecordWithAssistant>, String> {
-    query_usage_entries(conn, date, assistant, true)
+    query_usage_entries(conn, DateMatch::Exact(date), assistant)
 }
 
 fn entry_date_from_timestamp(timestamp: &str) -> Option<&str> {
@@ -7241,7 +7260,11 @@ pub fn get_usage_entries_by_month(
     year_month: &str,
     assistant: &str,
 ) -> Result<Vec<DatedUsageEntry>, String> {
-    let rows = query_usage_entries(conn, &format!("{year_month}-%"), assistant, false)?;
+    let rows = query_usage_entries(
+        conn,
+        DateMatch::Prefix(&format!("{year_month}-%")),
+        assistant,
+    )?;
     Ok(rows
         .into_iter()
         .map(|row| DatedUsageEntry {
@@ -7296,7 +7319,7 @@ pub fn get_usage_entries_by_year(
     year: &str,
     assistant: &str,
 ) -> Result<Vec<DatedUsageEntry>, String> {
-    let rows = query_usage_entries(conn, &format!("{year}-%"), assistant, false)?;
+    let rows = query_usage_entries(conn, DateMatch::Prefix(&format!("{year}-%")), assistant)?;
     Ok(rows
         .into_iter()
         .map(|row| DatedUsageEntry {
@@ -7306,6 +7329,25 @@ pub fn get_usage_entries_by_year(
         })
         .collect())
 }
+
+/// 取得 `start` 至 `end`（含）之間的使用記錄，兩者皆為 `YYYY-MM-DD`。
+pub fn get_usage_entries_by_range(
+    conn: &rusqlite::Connection,
+    start: &str,
+    end: &str,
+    assistant: &str,
+) -> Result<Vec<DatedUsageEntry>, String> {
+    let rows = query_usage_entries(conn, DateMatch::Range(start, end), assistant)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| DatedUsageEntry {
+            entry: row.record.entry,
+            assistant_type: row.assistant_type,
+            date: row.date,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

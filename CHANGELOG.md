@@ -4,6 +4,10 @@
 
 ## [未發行]
 
+## [1.6.1] - 2026-10-29
+
+本次 patch release 新增 Docker 隔離式用量看板與管理腳本，並修正 Windows 透過 `npx` 安裝時 GNU tar 顯示誤導錯誤訊息的問題。
+
 ### 新增與改善
 
 - 新增 `docker/` 資料夾，提供最小化容器映像檔與管理腳本 `docker/tui-docker.sh`，用來分開檢視不同人的用量資料。`Dockerfile` 以 `rust:1-alpine` 編譯 musl 靜態執行檔、執行階段僅使用 `alpine:3.22`，以非 root 使用者執行並停用自我更新；資料庫固定在 `/data` 具名磁碟區，容器內不讀取任何本機 AI 工具日誌。
@@ -12,6 +16,10 @@
 ### 修正
 
 - 修正 Windows 透過 `npx` 安裝時，若 PATH 上 Git for Windows / MSYS2 的 GNU tar 排在系統 `tar.exe` 之前，下載後會出現 `tar: Cannot connect to C: resolve failed` 錯誤訊息的問題。安裝程式改以 `%SystemRoot%\System32\tar.exe`（Windows 內建 bsdtar）的絕對路徑解壓 zip，找不到時直接改用 PowerShell 的 .NET ZipFile 解壓；先前雖會自動退回 PowerShell 而完成安裝，但會顯示誤導性的錯誤訊息。
+
+### 相容性
+
+- 未變更既有本機資料庫結構、公開 API、執行期環境變數或原生安裝流程；Docker 容器是新增的隔離式使用方式。
 
 ## [1.6.0] - 2026-10-28
 
